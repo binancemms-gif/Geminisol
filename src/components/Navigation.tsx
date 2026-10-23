@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Radar, Bot, TrendingUp, Bell, ShieldAlert, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Radar, Bot, TrendingUp, Bell, ShieldAlert, ChevronLeft, ChevronRight, Users, Zap } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 interface NavigationProps {
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'scanner', label: 'Scanner', fullTitle: 'Radar Scanner', icon: Radar },
   { id: 'agent', label: 'Terminal', fullTitle: 'Agent Terminal', icon: Bot },
   { id: 'positions', label: 'Positions', fullTitle: 'P&L Positions', icon: TrendingUp },
+  { id: 'jito', label: 'Jito', fullTitle: 'Jito Bundles', icon: Zap },
   { id: 'mirror', label: 'Mirror', fullTitle: 'Wallet Mirroring', icon: Users },
   { id: 'alerts', label: 'Alerts', fullTitle: 'Price Alerts', icon: Bell },
   { id: 'settings', label: 'Armor', fullTitle: 'Shell Armor', icon: ShieldAlert },

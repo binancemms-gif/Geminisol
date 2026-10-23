@@ -12,6 +12,7 @@ import { PriceAlertModal } from './components/PriceAlertModal';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { PriceAlertsManager } from './components/PriceAlertsManager';
 import { MirrorTrading } from './components/MirrorTrading';
+import { JitoBundleStatus } from './components/JitoBundleStatus';
 import {
   Token,
   StrategySettings,
@@ -39,9 +40,26 @@ import {
   playAlertBuzzer,
   playPanicSound,
   playPriceAlertChime,
+  triggerHaptic,
+  triggerSnipeHaptic,
+  triggerProfitHaptic,
+  triggerStopLossHaptic,
+  triggerPanicHaptic,
 } from './utils/audio';
 
 const SOL_PRICE_USD = 182.40;
+
+const JITO_VALIDATOR_LEADERS = [
+  'Jito-Frankfurt-01',
+  'Jito-NewYork-Edge',
+  'Chorus-One-Edge',
+  'Jito-Tokyo-Edge',
+  'Helius-Relayer-04',
+  'Everstake-Jito-02',
+];
+
+const getRandomValidatorLeader = () =>
+  JITO_VALIDATOR_LEADERS[Math.floor(Math.random() * JITO_VALIDATOR_LEADERS.length)];
 
 const DEFAULT_STRATEGY: StrategySettings = {
   isAutonomousEnabled: true,
@@ -559,6 +577,7 @@ export default function App() {
     }));
 
     const txSignature = `${Math.random().toString(36).substring(2, 8)}...${Math.random().toString(36).substring(2, 6)}`;
+    const jitoDelay = Math.floor(28 + Math.random() * 12);
     setTradeLogs((prev) => [
       {
         id: `tx-${Date.now()}`,
@@ -568,19 +587,45 @@ export default function App() {
         tokenMint: pos.tokenMint,
         amountSol: returnedSol,
         priceSol: pos.currentPriceSol,
-        latencyMs: Math.floor(28 + Math.random() * 12),
+        latencyMs: jitoDelay,
         blockSlot: (wallet.devnetSlot || 514391633) + Math.floor(Math.random() * 200),
         signature: txSignature,
         jitoTipSol: settings.jitoTipSol,
         pnlSol: pos.pnlSol,
         pnlPercent: pos.pnlPercent,
+        jitoBundleId: `bundle_${Math.random().toString(36).substring(2, 10)}`,
+        bundleStatus: 'LANDED',
+        inclusionDelayMs: jitoDelay,
+        slotDistance: 0,
+        validatorLeader: getRandomValidatorLeader(),
       },
       ...prev,
     ]);
 
     const isWin = pos.pnlPercent > 0;
-    if (isWin) playProfitChime();
-    else playAlertBuzzer();
+    if (isWin) {
+      playProfitChime();
+      triggerProfitHaptic();
+      // Physical haptic trigger on mobile devices for take-profit auto exit
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([60, 40, 100, 40, 140]);
+        } catch {
+          // Gracefully ignore devices without vibration support or blocked iframe policies
+        }
+      }
+    } else {
+      playAlertBuzzer();
+      triggerStopLossHaptic();
+      // Physical haptic trigger on mobile devices for stop-loss / risk mitigation
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([120, 60, 140]);
+        } catch {
+          // Gracefully ignore devices without vibration support or blocked iframe policies
+        }
+      }
+    }
 
     setThoughts((prev) => [
       {
@@ -649,6 +694,11 @@ export default function App() {
         blockSlot: (wallet.devnetSlot || 514391633) + Math.floor(Math.random() * 200),
         signature: txSignature,
         jitoTipSol: settings.jitoTipSol,
+        jitoBundleId: `bundle_${Math.random().toString(36).substring(2, 10)}`,
+        bundleStatus: 'LANDED',
+        inclusionDelayMs: latencyMs,
+        slotDistance: 0,
+        validatorLeader: getRandomValidatorLeader(),
       },
       ...prev,
     ]);
@@ -669,6 +719,15 @@ export default function App() {
     ]);
 
     playSnipeChime();
+    triggerSnipeHaptic();
+    // Physical haptic trigger on mobile devices for snipe execution
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([40, 30, 50]);
+      } catch {
+        // Gracefully ignore devices without vibration support or blocked iframe policies
+      }
+    }
   };
 
   const handleSellPosition = (positionId: string, percentage: number) => {
@@ -701,6 +760,11 @@ export default function App() {
         jitoTipSol: settings.jitoTipSol,
         pnlSol: pnlShare,
         pnlPercent: pos.pnlPercent,
+        jitoBundleId: `bundle_${Math.random().toString(36).substring(2, 10)}`,
+        bundleStatus: 'LANDED',
+        inclusionDelayMs: Math.floor(29 + Math.random() * 15),
+        slotDistance: 0,
+        validatorLeader: getRandomValidatorLeader(),
       },
       ...prev,
     ]);
@@ -784,6 +848,11 @@ export default function App() {
           jitoTipSol: settings.jitoTipSol,
           pnlSol: pos.pnlSol,
           pnlPercent: pos.pnlPercent,
+          jitoBundleId: `bundle_${Math.random().toString(36).substring(2, 10)}`,
+          bundleStatus: 'LANDED',
+          inclusionDelayMs: 28,
+          slotDistance: 0,
+          validatorLeader: getRandomValidatorLeader(),
         },
         ...prev,
       ]);
@@ -797,6 +866,14 @@ export default function App() {
 
     setPositions([]);
     playPanicSound();
+    triggerPanicHaptic();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([150, 60, 150, 60, 200]);
+      } catch {
+        // Ignore unsupported/blocked contexts
+      }
+    }
 
     setThoughts((prev) => [
       {
@@ -1012,6 +1089,22 @@ export default function App() {
       setMirrorEvents((prev) => [newEvent, ...prev.slice(0, 25)]);
       playAlertBuzzer();
     }
+  };
+
+  const handleSendProbeBundle = (probeLog: TradeLog) => {
+    setTradeLogs((prev) => [probeLog, ...prev]);
+    setThoughts((prev) => [
+      {
+        id: `th-${Date.now()}`,
+        timestamp: Date.now(),
+        level: 'SUCCESS',
+        tokenSymbol: probeLog.tokenSymbol,
+        message: `⚡ Jito Probe Bundle Landed in ${probeLog.inclusionDelayMs}ms at slot #${probeLog.blockSlot} via leader ${probeLog.validatorLeader}. 0 dropped, 100% MEV protected.`,
+        actionTaken: 'SNIPED',
+        latencyMs: probeLog.inclusionDelayMs,
+      },
+      ...prev.slice(0, 40),
+    ]);
   };
 
   const activeAlertsCount = alerts.filter((a) => a.active && !a.triggered).length;

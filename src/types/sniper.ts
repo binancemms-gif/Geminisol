@@ -84,6 +84,12 @@ export interface TradeLog {
   jitoTipSol: number;
   pnlSol?: number;
   pnlPercent?: number;
+  // Real-time Jito Bundle Execution Telemetry
+  jitoBundleId?: string;
+  bundleStatus?: 'LANDED' | 'DROPPED' | 'PENDING';
+  inclusionDelayMs?: number;
+  slotDistance?: number;
+  validatorLeader?: string;
 }
 
 export interface AgentThought {

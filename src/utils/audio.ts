@@ -187,3 +187,48 @@ export function playPanicSound() {
   osc.start(now);
   osc.stop(now + 0.3);
 }
+
+/**
+ * Safely trigger mobile physical vibration feedback via navigator.vibrate()
+ * Returns true if the device vibration was successfully initiated.
+ */
+export function triggerHaptic(pattern: number | number[] = 50): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  try {
+    if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
+      return navigator.vibrate(pattern);
+    }
+  } catch {
+    // Gracefully handle browser vibration policies, permissions, or iframe sandboxing
+  }
+  return false;
+}
+
+/**
+ * Sharp tactile double-pulse when a token snipe/buy transaction is submitted
+ */
+export function triggerSnipeHaptic(): boolean {
+  return triggerHaptic([40, 30, 50]);
+}
+
+/**
+ * Celebratory ascending rhythm when take-profit auto-exit triggers
+ */
+export function triggerProfitHaptic(): boolean {
+  return triggerHaptic([60, 40, 100, 40, 140]);
+}
+
+/**
+ * Firm warning dual buzz when stop-loss protection executes
+ */
+export function triggerStopLossHaptic(): boolean {
+  return triggerHaptic([120, 60, 140]);
+}
+
+/**
+ * Heavy urgent pulse for panic sell emergency liquidation
+ */
+export function triggerPanicHaptic(): boolean {
+  return triggerHaptic([150, 60, 150, 60, 200]);
+}
+

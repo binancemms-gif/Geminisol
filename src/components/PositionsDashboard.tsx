@@ -34,6 +34,7 @@ interface PositionsDashboardProps {
   onDoubleDown: (position: Position) => void;
   onPanicSellAll: () => void;
   solPriceUsd: number;
+  onNavigateToJito?: () => void;
 }
 
 interface DexProfile {
@@ -52,6 +53,7 @@ export const PositionsDashboard: React.FC<PositionsDashboardProps> = ({
   onDoubleDown,
   onPanicSellAll,
   solPriceUsd,
+  onNavigateToJito,
 }) => {
   const [showPanicModal, setShowPanicModal] = useState(false);
   const [timeframe, setTimeframe] = useState<'1H' | '6H' | '24H' | 'ALL'>('ALL');
@@ -627,13 +629,27 @@ export const PositionsDashboard: React.FC<PositionsDashboardProps> = ({
 
       {/* 4. EXECUTION LEDGER & TELEMETRY */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-            Execution Ledger &amp; Telemetry
-          </h3>
-          <span className="text-xs text-slate-500 font-mono">
-            Jito Validator Signatures
-          </span>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Execution Ledger &amp; Telemetry
+            </h3>
+            <span className="text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">
+              Jito Bundled (Sub-50ms)
+            </span>
+          </div>
+          {onNavigateToJito && (
+            <button
+              onClick={() => {
+                playClickSound();
+                onNavigateToJito();
+              }}
+              className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-mono hover:underline"
+            >
+              <span>View Real-Time Jito Inclusion Status</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="space-y-2 overflow-x-auto">
