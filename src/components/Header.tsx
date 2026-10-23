@@ -106,6 +106,20 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => {
               playClickSound();
+              setActiveTab('mirror');
+            }}
+            className={`whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'mirror' ? 'text-cyan-400 font-semibold' : 'hover:text-slate-200'
+            }`}
+          >
+            <span>Mirror Wallets</span>
+            <span className="text-[10px] font-mono bg-cyan-500/20 text-cyan-300 px-1.5 py-0.2 rounded border border-cyan-500/40">
+              New
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              playClickSound();
               setActiveTab('alerts');
             }}
             className={`whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${

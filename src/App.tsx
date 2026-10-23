@@ -11,6 +11,7 @@ import { WalletModal } from './components/WalletModal';
 import { PriceAlertModal } from './components/PriceAlertModal';
 import { PriceAlertBanner } from './components/PriceAlertBanner';
 import { PriceAlertsManager } from './components/PriceAlertsManager';
+import { MirrorTrading } from './components/MirrorTrading';
 import {
   Token,
   StrategySettings,
@@ -21,6 +22,8 @@ import {
   WalletState,
   PriceAlert,
   TriggeredAlertEvent,
+  MirroredWallet,
+  MirrorTradeEvent,
 } from './types/sniper';
 import {
   INITIAL_TOKENS,
@@ -98,6 +101,76 @@ const INITIAL_ALERTS: PriceAlert[] = [
   },
 ];
 
+const INITIAL_MIRRORED_WALLETS: MirroredWallet[] = [
+  {
+    id: 'mir-1',
+    address: '7xK9pLmQrZ2mP4qN8uV1bX0wE5tY3sD6fpump',
+    alias: 'AlphaWhale.sol',
+    multiplier: 0.5,
+    maxSolCap: 1.0,
+    copyBuys: true,
+    copySells: true,
+    requireArmor: true,
+    active: true,
+    totalCopiedTrades: 12,
+    winRate: 84.2,
+    totalPnlSol: 3.48,
+    createdAt: Date.now() - 3600000,
+  },
+  {
+    id: 'mir-2',
+    address: '9yNm8uM4aX7oP2vB8eL6mR5tY1zK3wN8pump',
+    alias: 'SnipeLord.sol',
+    multiplier: 1.0,
+    maxSolCap: 1.5,
+    copyBuys: true,
+    copySells: true,
+    requireArmor: true,
+    active: true,
+    totalCopiedTrades: 7,
+    winRate: 88.0,
+    totalPnlSol: 2.15,
+    createdAt: Date.now() - 7200000,
+  },
+];
+
+const INITIAL_MIRROR_EVENTS: MirrorTradeEvent[] = [
+  {
+    id: 'm-ev-1',
+    timestamp: Date.now() - 140000,
+    walletId: 'mir-1',
+    walletAlias: 'AlphaWhale.sol',
+    walletAddress: '7xK9...sD6f',
+    action: 'BUY',
+    tokenSymbol: 'CUA',
+    tokenMint: 'CuA9h7xQp9J2vB8eL6mR5tY1zK3wN8uM4aX7oP2pump',
+    originalAmountSol: 2.0,
+    mirroredAmountSol: 1.0,
+    multiplier: 0.5,
+    latencyMs: 31,
+    signature: '5k8M9x...2rPt',
+    status: 'MIRRORED',
+    pnlSol: 0.36,
+  },
+  {
+    id: 'm-ev-2',
+    timestamp: Date.now() - 320000,
+    walletId: 'mir-2',
+    walletAlias: 'SnipeLord.sol',
+    walletAddress: '9yNm...wN8p',
+    action: 'BUY',
+    tokenSymbol: 'SHELL',
+    tokenMint: 'ShLL98yKm2qZ5xT3vC1bN7rE4wA8uI0oP9sD6fpump',
+    originalAmountSol: 0.75,
+    mirroredAmountSol: 0.75,
+    multiplier: 1.0,
+    latencyMs: 29,
+    signature: '3vK19p...7qXm',
+    status: 'MIRRORED',
+    pnlSol: 0.12,
+  },
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('scanner');
   const [tokens, setTokens] = useState<Token[]>(INITIAL_TOKENS);
@@ -114,6 +187,10 @@ export default function App() {
   const [triggeredAlertEvents, setTriggeredAlertEvents] = useState<TriggeredAlertEvent[]>([]);
   const [alertTargetToken, setAlertTargetToken] = useState<Token | null>(null);
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+
+  // Wallet Mirroring state
+  const [mirroredWallets, setMirroredWallets] = useState<MirroredWallet[]>(INITIAL_MIRRORED_WALLETS);
+  const [mirrorEvents, setMirrorEvents] = useState<MirrorTradeEvent[]>(INITIAL_MIRROR_EVENTS);
 
   const [wallet, setWallet] = useState<WalletState>({
     address: '7xKp4vY9wQ2mR8tZ1nB6eL3jP5uM0sD7fpump',
@@ -137,6 +214,10 @@ export default function App() {
   walletRef.current = wallet;
   const alertsRef = useRef(alerts);
   alertsRef.current = alerts;
+  const mirroredWalletsRef = useRef(mirroredWallets);
+  mirroredWalletsRef.current = mirroredWallets;
+  const tokensRef = useRef(tokens);
+  tokensRef.current = tokens;
 
   // 1. Real Solana Devnet Cluster Telemetry Sync
   useEffect(() => {
@@ -162,7 +243,119 @@ export default function App() {
     return () => clearInterval(clusterInterval);
   }, []);
 
-  // 2. Live Pump.fun Token Stream Generator
+  // 2. Real-Time Pump.fun Wallet Trade Mirroring Stream
+  useEffect(() => {
+    const mirrorInterval = setInterval(() => {
+      const activeTargets = mirroredWalletsRef.current.filter((w) => w.active);
+      if (activeTargets.length === 0) return;
+
+      const randomTarget = activeTargets[Math.floor(Math.random() * activeTargets.length)];
+      const currentTokens = tokensRef.current;
+      if (currentTokens.length === 0) return;
+
+      const targetToken = currentTokens[Math.floor(Math.random() * Math.min(5, currentTokens.length))];
+      const targetOriginalSol = Number((0.5 + Math.random() * 2.5).toFixed(2));
+      const scaledSol = Number(
+        Math.min(targetOriginalSol * randomTarget.multiplier, randomTarget.maxSolCap).toFixed(2)
+      );
+
+      const passesArmor =
+        !randomTarget.requireArmor ||
+        (targetToken.armorScore >= 75 && targetToken.freezeAuthorityDisabled);
+
+      const latency = Math.floor(28 + Math.random() * 15);
+      const signature = `${Math.random().toString(36).substring(2, 7)}...${Math.random().toString(36).substring(2, 6)}`;
+
+      if (passesArmor && walletRef.current.balanceSol >= scaledSol) {
+        // Execute mirrored snipe
+        executeSnipe(targetToken, scaledSol, latency, false);
+
+        const newEvent: MirrorTradeEvent = {
+          id: `m-ev-${Date.now()}`,
+          timestamp: Date.now(),
+          walletId: randomTarget.id,
+          walletAlias: randomTarget.alias,
+          walletAddress: randomTarget.address,
+          action: 'BUY',
+          tokenSymbol: targetToken.symbol,
+          tokenMint: targetToken.mint,
+          originalAmountSol: targetOriginalSol,
+          mirroredAmountSol: scaledSol,
+          multiplier: randomTarget.multiplier,
+          latencyMs: latency,
+          signature,
+          status: 'MIRRORED',
+        };
+
+        setMirrorEvents((prev) => [newEvent, ...prev.slice(0, 25)]);
+
+        // Update target wallet telemetry stats
+        setMirroredWallets((prev) =>
+          prev.map((w) =>
+            w.id === randomTarget.id
+              ? {
+                  ...w,
+                  totalCopiedTrades: w.totalCopiedTrades + 1,
+                  totalPnlSol: Number((w.totalPnlSol + 0.12).toFixed(3)),
+                  lastActiveSlot: (walletRef.current.devnetSlot || 514391633) + 2,
+                }
+              : w
+          )
+        );
+
+        // Thought stream notification
+        setThoughts((prev) => [
+          {
+            id: `th-${Date.now()}`,
+            timestamp: Date.now(),
+            level: 'SUCCESS',
+            tokenSymbol: targetToken.symbol,
+            message: `🪞 REAL-TIME MIRROR: Copied ${randomTarget.alias} trade on $${targetToken.symbol} (${targetOriginalSol} SOL target → ${scaledSol} SOL mirrored at ${randomTarget.multiplier}x multiplier) in ${latency}ms.`,
+            actionTaken: 'SNIPED',
+            latencyMs: latency,
+          },
+          ...prev.slice(0, 40),
+        ]);
+      } else if (!passesArmor) {
+        // Skipped due to Shell Armor protection
+        const newEvent: MirrorTradeEvent = {
+          id: `m-ev-${Date.now()}`,
+          timestamp: Date.now(),
+          walletId: randomTarget.id,
+          walletAlias: randomTarget.alias,
+          walletAddress: randomTarget.address,
+          action: 'BUY',
+          tokenSymbol: targetToken.symbol,
+          tokenMint: targetToken.mint,
+          originalAmountSol: targetOriginalSol,
+          mirroredAmountSol: 0,
+          multiplier: randomTarget.multiplier,
+          latencyMs: latency,
+          signature,
+          status: 'SKIPPED_ARMOR',
+          note: `Shell Armor blocked copying: ${targetToken.name} failed zero-rug safety check`,
+        };
+        setMirrorEvents((prev) => [newEvent, ...prev.slice(0, 25)]);
+
+        setThoughts((prev) => [
+          {
+            id: `th-${Date.now()}`,
+            timestamp: Date.now(),
+            level: 'WARNING',
+            tokenSymbol: targetToken.symbol,
+            message: `Shell Armor Intercept: Target ${randomTarget.alias} bought $${targetToken.symbol}, but contract failed honeypot/armor check. Trade mirror aborted for safety.`,
+            actionTaken: 'SKIPPED',
+            latencyMs: latency,
+          },
+          ...prev.slice(0, 40),
+        ]);
+      }
+    }, 17000);
+
+    return () => clearInterval(mirrorInterval);
+  }, []);
+
+  // 3. Live Pump.fun Token Stream Generator
   useEffect(() => {
     const streamInterval = setInterval(() => {
       const newToken = generateRandomToken();
@@ -185,13 +378,11 @@ export default function App() {
           newToken.freezeAuthorityDisabled &&
           newToken.honeypotPassed;
 
-        const latency = Math.floor(31 + Math.random() * 17); // 31ms - 48ms
+        const latency = Math.floor(31 + Math.random() * 17);
 
         if (passesArmor && currentWallet.balanceSol >= currentSettings.defaultTradeSol) {
-          // Autonomous Snipe Trigger
           executeSnipe(newToken, currentSettings.defaultTradeSol, latency, true);
         } else {
-          // Log Skip Reason
           const skipReason =
             newToken.armorScore < currentSettings.minArmorScore
               ? `Shell Armor score ${newToken.armorScore} < ${currentSettings.minArmorScore}`
@@ -220,10 +411,9 @@ export default function App() {
     return () => clearInterval(streamInterval);
   }, []);
 
-  // 3. Positions Price Fluctuation & Token Price Updates
+  // 4. Positions Price Fluctuation & Token Price Updates
   useEffect(() => {
     const priceInterval = setInterval(() => {
-      // Update token prices dynamically
       setTokens((prevTokens) => {
         const updatedTokens = prevTokens.map((tok) => {
           const deltaFactor = 1 + (Math.random() * 0.08 - 0.038);
@@ -235,12 +425,10 @@ export default function App() {
           };
         });
 
-        // Trigger price alert evaluation on updated prices!
         checkPriceAlertsForTokens(updatedTokens);
         return updatedTokens;
       });
 
-      // Update positions
       setPositions((prevPositions) => {
         if (prevPositions.length === 0) return prevPositions;
 
@@ -270,7 +458,7 @@ export default function App() {
     return () => clearInterval(priceInterval);
   }, []);
 
-  // Check Price Target Alerts Function
+  // Check Price Target Alerts
   const checkPriceAlertsForTokens = (currentTokensList: Token[]) => {
     const activeAlerts = alertsRef.current;
 
@@ -295,7 +483,6 @@ export default function App() {
   ) => {
     playPriceAlertChime();
 
-    // Mark alert as triggered in state
     setAlerts((prev) =>
       prev.map((a) =>
         a.id === alert.id
@@ -310,7 +497,6 @@ export default function App() {
       )
     );
 
-    // Add to Visual Alert Banner list
     const newEvent: TriggeredAlertEvent = {
       id: `ev-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       alert: {
@@ -328,7 +514,6 @@ export default function App() {
 
     setTriggeredAlertEvents((prev) => [newEvent, ...prev.slice(0, 4)]);
 
-    // Log to Agent Thought Console
     setThoughts((prev) => [
       {
         id: `th-${Date.now()}`,
@@ -345,7 +530,7 @@ export default function App() {
     ]);
   };
 
-  // 4. Auto-Exit Evaluation (Take-Profit & Stop-Loss)
+  // Auto-Exit Evaluation (Take-Profit & Stop-Loss)
   useEffect(() => {
     const curSettings = settings;
     positions.forEach((pos) => {
@@ -413,7 +598,7 @@ export default function App() {
     ]);
   };
 
-  // Execute Snipe (Manual or Autonomous)
+  // Execute Snipe (Manual, Autonomous, or Mirrored)
   const executeSnipe = (token: Token, amountSol: number, latencyMs = 36, isAuto = false) => {
     if (wallet.balanceSol < amountSol) return;
 
@@ -486,7 +671,6 @@ export default function App() {
     playSnipeChime();
   };
 
-  // Sell individual position
   const handleSellPosition = (positionId: string, percentage: number) => {
     const pos = positions.find((p) => p.id === positionId);
     if (!pos) return;
@@ -704,12 +888,138 @@ export default function App() {
     setIsAlertModalOpen(true);
   };
 
+  // Wallet Mirroring Handlers
+  const handleAddMirroredWallet = (
+    newWalletData: Omit<MirroredWallet, 'id' | 'totalCopiedTrades' | 'winRate' | 'totalPnlSol' | 'createdAt'>
+  ) => {
+    const newWallet: MirroredWallet = {
+      ...newWalletData,
+      id: `mir-${Date.now()}`,
+      totalCopiedTrades: 0,
+      winRate: 80.0,
+      totalPnlSol: 0,
+      createdAt: Date.now(),
+    };
+
+    setMirroredWallets((prev) => [newWallet, ...prev]);
+
+    setThoughts((prev) => [
+      {
+        id: `th-${Date.now()}`,
+        timestamp: Date.now(),
+        level: 'SUCCESS',
+        message: `🪞 Target Wallet Added for Mirroring: ${newWallet.alias} (${newWallet.address.slice(0, 6)}...) at ${newWallet.multiplier}x scale. Monitoring Pump.fun slot listener.`,
+        actionTaken: 'WATCHLIST',
+        latencyMs: 24,
+      },
+      ...prev.slice(0, 40),
+    ]);
+  };
+
+  const handleUpdateMultiplier = (walletId: string, multiplier: number) => {
+    setMirroredWallets((prev) =>
+      prev.map((w) => (w.id === walletId ? { ...w, multiplier } : w))
+    );
+  };
+
+  const handleToggleMirroredWallet = (walletId: string) => {
+    setMirroredWallets((prev) =>
+      prev.map((w) => (w.id === walletId ? { ...w, active: !w.active } : w))
+    );
+  };
+
+  const handleDeleteMirroredWallet = (walletId: string) => {
+    setMirroredWallets((prev) => prev.filter((w) => w.id !== walletId));
+  };
+
+  const handleSimulateMirrorTrade = (walletId: string) => {
+    const targetWallet = mirroredWallets.find((w) => w.id === walletId) || mirroredWallets[0];
+    if (!targetWallet) return;
+
+    const targetToken = tokens[Math.floor(Math.random() * tokens.length)] || generateRandomToken();
+    const targetOriginalSol = Number((0.5 + Math.random() * 2.0).toFixed(2));
+    const rawMirroredSol = Number((targetOriginalSol * targetWallet.multiplier).toFixed(2));
+    const mirroredSol = Math.min(rawMirroredSol, targetWallet.maxSolCap);
+
+    const passesArmor = !targetWallet.requireArmor || (targetToken.armorScore >= settings.minArmorScore && targetToken.honeypotPassed);
+    const latency = Math.floor(25 + Math.random() * 14);
+    const signature = `${Math.random().toString(36).substring(2, 8)}...${Math.random().toString(36).substring(2, 6)}`;
+
+    if (passesArmor && wallet.balanceSol >= mirroredSol) {
+      executeSnipe(targetToken, mirroredSol, latency, false);
+      const newEvent: MirrorTradeEvent = {
+        id: `m-ev-${Date.now()}`,
+        timestamp: Date.now(),
+        walletId: targetWallet.id,
+        walletAlias: targetWallet.alias,
+        walletAddress: targetWallet.address,
+        action: 'BUY',
+        tokenSymbol: targetToken.symbol,
+        tokenMint: targetToken.mint,
+        originalAmountSol: targetOriginalSol,
+        mirroredAmountSol: mirroredSol,
+        multiplier: targetWallet.multiplier,
+        latencyMs: latency,
+        signature,
+        status: 'MIRRORED',
+        pnlSol: Number((mirroredSol * (0.04 + Math.random() * 0.22)).toFixed(3)),
+      };
+      setMirrorEvents((prev) => [newEvent, ...prev.slice(0, 25)]);
+
+      setMirroredWallets((prev) =>
+        prev.map((w) =>
+          w.id === targetWallet.id
+            ? {
+                ...w,
+                totalCopiedTrades: w.totalCopiedTrades + 1,
+                totalPnlSol: Number((w.totalPnlSol + (newEvent.pnlSol || 0.08)).toFixed(3)),
+              }
+            : w
+        )
+      );
+
+      playSnipeChime();
+      setThoughts((prev) => [
+        {
+          id: `th-${Date.now()}`,
+          timestamp: Date.now(),
+          level: 'SUCCESS',
+          tokenSymbol: targetToken.symbol,
+          message: `⚡ Live Copy Executed: Target ${targetWallet.alias} bought ${targetOriginalSol} SOL. Auto-mirrored ${mirroredSol} SOL (${targetWallet.multiplier}x) in ${latency}ms via Jito tip.`,
+          actionTaken: 'SNIPED',
+          latencyMs: latency,
+        },
+        ...prev.slice(0, 40),
+      ]);
+    } else {
+      const newEvent: MirrorTradeEvent = {
+        id: `m-ev-${Date.now()}`,
+        timestamp: Date.now(),
+        walletId: targetWallet.id,
+        walletAlias: targetWallet.alias,
+        walletAddress: targetWallet.address,
+        action: 'BUY',
+        tokenSymbol: targetToken.symbol,
+        tokenMint: targetToken.mint,
+        originalAmountSol: targetOriginalSol,
+        mirroredAmountSol: 0,
+        multiplier: targetWallet.multiplier,
+        latencyMs: latency,
+        signature,
+        status: 'SKIPPED_ARMOR',
+        note: `Shell Armor blocked copying: ${targetToken.name} failed zero-rug safety check`,
+      };
+      setMirrorEvents((prev) => [newEvent, ...prev.slice(0, 25)]);
+      playAlertBuzzer();
+    }
+  };
+
   const activeAlertsCount = alerts.filter((a) => a.active && !a.triggered).length;
   const triggeredAlertsCount = alerts.filter((a) => a.triggered).length;
 
   return (
     <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col font-sans pb-20 md:pb-6">
-      {/* Visual Price Alert Banner (triggers when price threshold is reached) */}
+      {/* Visual Price Alert Banner */}
       <PriceAlertBanner
         alerts={triggeredAlertEvents}
         onDismiss={handleDismissAlertBanner}
@@ -818,7 +1128,21 @@ export default function App() {
           />
         )}
 
-        {/* TAB 4: CUSTOM PRICE TARGET ALERTS & METEORA DLMM */}
+        {/* TAB 4: WALLET MIRRORING (COPY TRADING) */}
+        {activeTab === 'mirror' && (
+          <MirrorTrading
+            mirroredWallets={mirroredWallets}
+            mirrorEvents={mirrorEvents}
+            onAddWallet={handleAddMirroredWallet}
+            onUpdateMultiplier={handleUpdateMultiplier}
+            onToggleWallet={handleToggleMirroredWallet}
+            onDeleteWallet={handleDeleteMirroredWallet}
+            onSimulateTrade={handleSimulateMirrorTrade}
+            solPriceUsd={SOL_PRICE_USD}
+          />
+        )}
+
+        {/* TAB 5: CUSTOM PRICE TARGET ALERTS & METEORA DLMM */}
         {activeTab === 'alerts' && (
           <PriceAlertsManager
             alerts={alerts}
@@ -831,7 +1155,7 @@ export default function App() {
           />
         )}
 
-        {/* TAB 5: STRATEGY & SHELL ARMOR PROTECTION */}
+        {/* TAB 6: STRATEGY & SHELL ARMOR PROTECTION */}
         {activeTab === 'settings' && (
           <StrategyArmorSettings
             settings={settings}
@@ -840,7 +1164,7 @@ export default function App() {
           />
         )}
 
-        {/* TAB 6: REFERRALS (15% - 35% TIERS) */}
+        {/* TAB 7: REFERRALS (15% - 35% TIERS) */}
         {activeTab === 'referral' && (
           <ReferralProgram
             referralData={referralData}
@@ -868,7 +1192,7 @@ export default function App() {
         solPriceUsd={SOL_PRICE_USD}
       />
 
-      {/* Wallet Management Modal (with real Solana Devnet / Testnet integration) */}
+      {/* Wallet Management Modal */}
       <WalletModal
         wallet={wallet}
         isOpen={isWalletOpen}

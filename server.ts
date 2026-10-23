@@ -192,6 +192,33 @@ Provide an ultra-sharp, quantitative autonomous trading assessment in strict JSO
     }
   });
 
+  // DEX Screener Token Profiles Endpoint (cached 60s to respect 60 req/min rate limit)
+  let cachedDexProfiles: any[] = [];
+  let lastDexProfileFetch = 0;
+
+  app.get('/api/dexscreener/profiles', async (req, res) => {
+    const now = Date.now();
+    if (now - lastDexProfileFetch < 60000 && cachedDexProfiles.length > 0) {
+      return res.json({ profiles: cachedDexProfiles, cached: true });
+    }
+
+    try {
+      const response = await fetch('https://api.dexscreener.com/token-profiles/latest/v1', {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        cachedDexProfiles = data;
+        lastDexProfileFetch = now;
+      }
+      res.json({ profiles: cachedDexProfiles, cached: false });
+    } catch (err: any) {
+      console.warn('DEX Screener fetch failed:', err?.message || err);
+      res.json({ profiles: cachedDexProfiles, error: err?.message });
+    }
+  });
+
   // RPC Health and ping simulation for sub-50ms validator connections
   app.get('/api/rpc-status', (req, res) => {
     res.json({

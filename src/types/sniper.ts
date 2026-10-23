@@ -169,3 +169,39 @@ export interface WalletState {
   clusterLatencyMs?: number;
 }
 
+export interface MirroredWallet {
+  id: string;
+  address: string;
+  alias: string;
+  multiplier: number; // e.g. 0.5x, 1.0x, 2.0x
+  maxSolCap: number; // max SOL per mirrored trade
+  copyBuys: boolean;
+  copySells: boolean;
+  requireArmor: boolean; // require Shell Armor pass
+  active: boolean;
+  totalCopiedTrades: number;
+  winRate: number; // e.g. 78.4%
+  totalPnlSol: number;
+  createdAt: number;
+  lastActiveSlot?: number;
+}
+
+export interface MirrorTradeEvent {
+  id: string;
+  timestamp: number;
+  walletId: string;
+  walletAlias: string;
+  walletAddress: string;
+  action: 'BUY' | 'SELL';
+  tokenSymbol: string;
+  tokenMint: string;
+  originalAmountSol: number;
+  mirroredAmountSol: number;
+  multiplier: number;
+  latencyMs: number;
+  signature: string;
+  status: 'MIRRORED' | 'SKIPPED_CAP' | 'SKIPPED_ARMOR';
+  note?: string;
+  pnlSol?: number;
+}
+
