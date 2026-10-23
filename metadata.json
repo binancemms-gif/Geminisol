@@ -1,0 +1,6 @@
+{
+  "name": "ShellArmor AI - Autonomous Solana Pump.fun Sniper",
+  "description": "Autonomous Solana trading agent with real-time Pump.fun token scanner, sub-50ms sniping execution, Shell Armor honeypot protection, AI analysis, P&L tracking, and tiered referral rewards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
