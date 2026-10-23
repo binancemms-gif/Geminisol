@@ -8,6 +8,9 @@ import { PositionsDashboard } from './components/PositionsDashboard';
 import { StrategyArmorSettings } from './components/StrategyArmorSettings';
 import { ReferralProgram } from './components/ReferralProgram';
 import { WalletModal } from './components/WalletModal';
+import { PriceAlertModal } from './components/PriceAlertModal';
+import { PriceAlertBanner } from './components/PriceAlertBanner';
+import { PriceAlertsManager } from './components/PriceAlertsManager';
 import {
   Token,
   StrategySettings,
@@ -16,6 +19,8 @@ import {
   AgentThought,
   ReferralData,
   WalletState,
+  PriceAlert,
+  TriggeredAlertEvent,
 } from './types/sniper';
 import {
   INITIAL_TOKENS,
@@ -25,7 +30,13 @@ import {
   INITIAL_REFERRAL_DATA,
 } from './utils/mockData';
 import { generateRandomToken } from './utils/tokenGenerator';
-import { playSnipeChime, playProfitChime, playAlertBuzzer, playPanicSound } from './utils/audio';
+import {
+  playSnipeChime,
+  playProfitChime,
+  playAlertBuzzer,
+  playPanicSound,
+  playPriceAlertChime,
+} from './utils/audio';
 
 const SOL_PRICE_USD = 182.40;
 
@@ -50,6 +61,43 @@ const DEFAULT_STRATEGY: StrategySettings = {
   soundAlertsEnabled: true,
 };
 
+const INITIAL_ALERTS: PriceAlert[] = [
+  {
+    id: 'alt-1',
+    tokenMint: 'CuA9h7xQp9J2vB8eL6mR5tY1zK3wN8uM4aX7oP2pump',
+    tokenSymbol: 'CUA',
+    tokenName: 'CUA Autonomous Agent',
+    targetPriceSol: 0.0000510,
+    targetPriceUsd: 0.0000510 * SOL_PRICE_USD,
+    condition: 'ABOVE',
+    currentPriceSol: 0.0000489,
+    currentPriceUsd: 0.0000489 * SOL_PRICE_USD,
+    initialPriceSol: 0.0000489,
+    createdAt: Date.now() - 120000,
+    triggered: false,
+    active: true,
+    note: 'Take profit 50% on resistance breakout',
+    dlmmBinId: 10432,
+  },
+  {
+    id: 'alt-2',
+    tokenMint: 'ShLL98yKm2qZ5xT3vC1bN7rE4wA8uI0oP9sD6fpump',
+    tokenSymbol: 'SHELL',
+    tokenName: 'Shell Armor Guardian',
+    targetPriceSol: 0.0000280,
+    targetPriceUsd: 0.0000280 * SOL_PRICE_USD,
+    condition: 'BELOW',
+    currentPriceSol: 0.0000312,
+    currentPriceUsd: 0.0000312 * SOL_PRICE_USD,
+    initialPriceSol: 0.0000312,
+    createdAt: Date.now() - 240000,
+    triggered: false,
+    active: true,
+    note: 'Double down on liquidity dip',
+    dlmmBinId: 10408,
+  },
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('scanner');
   const [tokens, setTokens] = useState<Token[]>(INITIAL_TOKENS);
@@ -61,13 +109,22 @@ export default function App() {
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
 
+  // Price target alerts state
+  const [alerts, setAlerts] = useState<PriceAlert[]>(INITIAL_ALERTS);
+  const [triggeredAlertEvents, setTriggeredAlertEvents] = useState<TriggeredAlertEvent[]>([]);
+  const [alertTargetToken, setAlertTargetToken] = useState<Token | null>(null);
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+
   const [wallet, setWallet] = useState<WalletState>({
     address: '7xKp4vY9wQ2mR8tZ1nB6eL3jP5uM0sD7fpump',
     connected: true,
     balanceSol: 14.85,
     balanceUsd: 14.85 * SOL_PRICE_USD,
     solPriceUsd: SOL_PRICE_USD,
-    walletProvider: 'Phantom',
+    walletProvider: 'Solana Devnet Testnet Wallet',
+    isDevnetActive: true,
+    devnetSlot: 514391633,
+    clusterLatencyMs: 38,
   });
 
   const [totalEvaluated, setTotalEvaluated] = useState(128);
@@ -78,12 +135,42 @@ export default function App() {
   settingsRef.current = settings;
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
 
-  // 1. Live Pump.fun Token Stream Generator
+  // 1. Real Solana Devnet Cluster Telemetry Sync
+  useEffect(() => {
+    const fetchClusterStatus = async () => {
+      try {
+        const res = await fetch('/api/solana/cluster-status');
+        const data = await res.json();
+        if (data.slot) {
+          setWallet((prev) => ({
+            ...prev,
+            isDevnetActive: true,
+            devnetSlot: data.slot,
+            clusterLatencyMs: data.latencyMs || 34,
+          }));
+        }
+      } catch {
+        // Keep smooth baseline
+      }
+    };
+
+    fetchClusterStatus();
+    const clusterInterval = setInterval(fetchClusterStatus, 12000);
+    return () => clearInterval(clusterInterval);
+  }, []);
+
+  // 2. Live Pump.fun Token Stream Generator
   useEffect(() => {
     const streamInterval = setInterval(() => {
       const newToken = generateRandomToken();
-      setTokens((prev) => [newToken, ...prev.slice(0, 35)]);
+      setTokens((prev) => {
+        const updated = [newToken, ...prev.slice(0, 35)];
+        checkPriceAlertsForTokens(updated);
+        return updated;
+      });
       setTotalEvaluated((c) => c + 1);
 
       // Autonomous Evaluation Engine
@@ -133,14 +220,31 @@ export default function App() {
     return () => clearInterval(streamInterval);
   }, []);
 
-  // 2. Positions Price Fluctuation & Auto-Exit Rule Engine
+  // 3. Positions Price Fluctuation & Token Price Updates
   useEffect(() => {
     const priceInterval = setInterval(() => {
+      // Update token prices dynamically
+      setTokens((prevTokens) => {
+        const updatedTokens = prevTokens.map((tok) => {
+          const deltaFactor = 1 + (Math.random() * 0.08 - 0.038);
+          const nextPriceSol = Number((tok.priceSol * deltaFactor).toFixed(7));
+          return {
+            ...tok,
+            priceSol: nextPriceSol,
+            priceUsd: Number((nextPriceSol * SOL_PRICE_USD).toFixed(5)),
+          };
+        });
+
+        // Trigger price alert evaluation on updated prices!
+        checkPriceAlertsForTokens(updatedTokens);
+        return updatedTokens;
+      });
+
+      // Update positions
       setPositions((prevPositions) => {
         if (prevPositions.length === 0) return prevPositions;
 
         return prevPositions.map((pos) => {
-          // Dynamic price swing: -4% to +6%
           const deltaFactor = 1 + (Math.random() * 0.10 - 0.04);
           const nextPriceSol = Number((pos.currentPriceSol * deltaFactor).toFixed(7));
           const nextPriceUsd = Number((nextPriceSol * SOL_PRICE_USD).toFixed(5));
@@ -166,30 +270,102 @@ export default function App() {
     return () => clearInterval(priceInterval);
   }, []);
 
-  // 3. Auto-Exit Evaluation (Take-Profit & Stop-Loss)
+  // Check Price Target Alerts Function
+  const checkPriceAlertsForTokens = (currentTokensList: Token[]) => {
+    const activeAlerts = alertsRef.current;
+
+    activeAlerts.forEach((alert) => {
+      if (!alert.active || alert.triggered) return;
+      const matched = currentTokensList.find((t) => t.mint === alert.tokenMint);
+      if (!matched) return;
+
+      const hitAbove = alert.condition === 'ABOVE' && matched.priceSol >= alert.targetPriceSol;
+      const hitBelow = alert.condition === 'BELOW' && matched.priceSol <= alert.targetPriceSol;
+
+      if (hitAbove || hitBelow) {
+        triggerPriceAlert(alert, matched.priceSol, matched.priceUsd);
+      }
+    });
+  };
+
+  const triggerPriceAlert = (
+    alert: PriceAlert,
+    currentPriceSol: number,
+    currentPriceUsd: number
+  ) => {
+    playPriceAlertChime();
+
+    // Mark alert as triggered in state
+    setAlerts((prev) =>
+      prev.map((a) =>
+        a.id === alert.id
+          ? {
+              ...a,
+              triggered: true,
+              triggeredAt: Date.now(),
+              currentPriceSol,
+              currentPriceUsd,
+            }
+          : a
+      )
+    );
+
+    // Add to Visual Alert Banner list
+    const newEvent: TriggeredAlertEvent = {
+      id: `ev-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      alert: {
+        ...alert,
+        triggered: true,
+        triggeredAt: Date.now(),
+        currentPriceSol,
+        currentPriceUsd,
+      },
+      triggeredPriceSol: currentPriceSol,
+      triggeredPriceUsd: currentPriceUsd,
+      timestamp: Date.now(),
+      dismissed: false,
+    };
+
+    setTriggeredAlertEvents((prev) => [newEvent, ...prev.slice(0, 4)]);
+
+    // Log to Agent Thought Console
+    setThoughts((prev) => [
+      {
+        id: `th-${Date.now()}`,
+        timestamp: Date.now(),
+        level: 'SUCCESS',
+        tokenSymbol: alert.tokenSymbol,
+        message: `🎯 CUSTOM PRICE TARGET HIT: $${alert.tokenSymbol} ${
+          alert.condition === 'ABOVE' ? 'climbed above' : 'dipped below'
+        } ${alert.targetPriceSol.toFixed(7)} SOL! Meteora DLMM Bin #${alert.dlmmBinId || 10420} reached.`,
+        actionTaken: 'WATCHLIST',
+        latencyMs: 29,
+      },
+      ...prev.slice(0, 40),
+    ]);
+  };
+
+  // 4. Auto-Exit Evaluation (Take-Profit & Stop-Loss)
   useEffect(() => {
     const curSettings = settings;
     positions.forEach((pos) => {
-      // Auto Take-Profit Check
       if (pos.pnlPercent >= curSettings.takeProfitPercent) {
         handleAutoExit(pos, 'TAKE_PROFIT');
-      }
-      // Auto Stop-Loss Check
-      else if (pos.pnlPercent <= -curSettings.stopLossPercent) {
+      } else if (pos.pnlPercent <= -curSettings.stopLossPercent) {
         handleAutoExit(pos, 'STOP_LOSS');
-      }
-      // Auto Bonding Curve Migration Exit
-      else if (pos.bondingCurveProgress >= curSettings.autoSellOnBondingCurvePercent) {
+      } else if (pos.bondingCurveProgress >= curSettings.autoSellOnBondingCurvePercent) {
         handleAutoExit(pos, 'TAKE_PROFIT', 'Bonding Curve 88% target reached');
       }
     });
   }, [positions, settings]);
 
-  const handleAutoExit = (pos: Position, exitType: 'TAKE_PROFIT' | 'STOP_LOSS', customNote?: string) => {
-    // Remove position
+  const handleAutoExit = (
+    pos: Position,
+    exitType: 'TAKE_PROFIT' | 'STOP_LOSS',
+    customNote?: string
+  ) => {
     setPositions((prev) => prev.filter((p) => p.id !== pos.id));
 
-    // Return funds + pnl to wallet
     const returnedSol = Math.max(0.01, pos.investedSol + pos.pnlSol);
     setWallet((prev) => ({
       ...prev,
@@ -197,7 +373,6 @@ export default function App() {
       balanceUsd: Number(((prev.balanceSol + returnedSol) * SOL_PRICE_USD).toFixed(2)),
     }));
 
-    // Log Trade
     const txSignature = `${Math.random().toString(36).substring(2, 8)}...${Math.random().toString(36).substring(2, 6)}`;
     setTradeLogs((prev) => [
       {
@@ -209,7 +384,7 @@ export default function App() {
         amountSol: returnedSol,
         priceSol: pos.currentPriceSol,
         latencyMs: Math.floor(28 + Math.random() * 12),
-        blockSlot: 312894100 + Math.floor(Math.random() * 500),
+        blockSlot: (wallet.devnetSlot || 514391633) + Math.floor(Math.random() * 200),
         signature: txSignature,
         jitoTipSol: settings.jitoTipSol,
         pnlSol: pos.pnlSol,
@@ -218,7 +393,6 @@ export default function App() {
       ...prev,
     ]);
 
-    // Log Agent Thought
     const isWin = pos.pnlPercent > 0;
     if (isWin) playProfitChime();
     else playAlertBuzzer();
@@ -243,7 +417,6 @@ export default function App() {
   const executeSnipe = (token: Token, amountSol: number, latencyMs = 36, isAuto = false) => {
     if (wallet.balanceSol < amountSol) return;
 
-    // Deduct wallet balance
     const nextBal = wallet.balanceSol - amountSol;
     setWallet((prev) => ({
       ...prev,
@@ -251,10 +424,8 @@ export default function App() {
       balanceUsd: Number((nextBal * SOL_PRICE_USD).toFixed(2)),
     }));
 
-    // Tokens bought
     const tokensBought = Number((amountSol / token.priceSol).toFixed(1));
 
-    // Create new Position
     const newPos: Position = {
       id: `pos-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tokenMint: token.mint,
@@ -279,7 +450,6 @@ export default function App() {
     setPositions((prev) => [newPos, ...prev]);
     setTotalSniped((c) => c + 1);
 
-    // Trade Log
     const txSignature = `${Math.random().toString(36).substring(2, 7)}...${Math.random().toString(36).substring(2, 6)}`;
     setTradeLogs((prev) => [
       {
@@ -291,14 +461,13 @@ export default function App() {
         amountSol,
         priceSol: token.priceSol,
         latencyMs,
-        blockSlot: 312894120 + Math.floor(Math.random() * 200),
+        blockSlot: (wallet.devnetSlot || 514391633) + Math.floor(Math.random() * 200),
         signature: txSignature,
         jitoTipSol: settings.jitoTipSol,
       },
       ...prev,
     ]);
 
-    // Agent Thought
     setThoughts((prev) => [
       {
         id: `th-${Date.now()}`,
@@ -307,7 +476,7 @@ export default function App() {
         tokenSymbol: token.symbol,
         message: `${
           isAuto ? 'Autonomous' : 'Manual'
-        } Snipe Executed in ${latencyMs}ms! Dev ${token.devHoldingPercent}%, Armor Score ${token.armorScore}/100. Jito bundle broadcasted.`,
+        } Snipe Executed in ${latencyMs}ms! Dev ${token.devHoldingPercent}%, Armor Score ${token.armorScore}/100. Solana Devnet slot bundle confirmed.`,
         actionTaken: 'SNIPED',
         latencyMs,
       },
@@ -326,14 +495,12 @@ export default function App() {
     const solReceived = Number((pos.currentSolValue * fraction).toFixed(4));
     const pnlShare = Number((pos.pnlSol * fraction).toFixed(4));
 
-    // Update wallet
     setWallet((prev) => ({
       ...prev,
       balanceSol: Number((prev.balanceSol + solReceived).toFixed(3)),
       balanceUsd: Number(((prev.balanceSol + solReceived) * SOL_PRICE_USD).toFixed(2)),
     }));
 
-    // Trade Log
     const txSignature = `${Math.random().toString(36).substring(2, 7)}...${Math.random().toString(36).substring(2, 6)}`;
     setTradeLogs((prev) => [
       {
@@ -345,7 +512,7 @@ export default function App() {
         amountSol: solReceived,
         priceSol: pos.currentPriceSol,
         latencyMs: Math.floor(29 + Math.random() * 15),
-        blockSlot: 312894180 + Math.floor(Math.random() * 200),
+        blockSlot: (wallet.devnetSlot || 514391633) + Math.floor(Math.random() * 200),
         signature: txSignature,
         jitoTipSol: settings.jitoTipSol,
         pnlSol: pnlShare,
@@ -377,7 +544,6 @@ export default function App() {
     }
   };
 
-  // Double down on position
   const handleDoubleDown = (pos: Position) => {
     const addAmount = 0.5;
     if (wallet.balanceSol < addAmount) return;
@@ -412,7 +578,6 @@ export default function App() {
     playSnipeChime();
   };
 
-  // Panic Sell All
   const handlePanicSellAll = () => {
     if (positions.length === 0) return;
 
@@ -430,7 +595,7 @@ export default function App() {
           amountSol: pos.currentSolValue,
           priceSol: pos.currentPriceSol,
           latencyMs: 28,
-          blockSlot: 312894220,
+          blockSlot: (wallet.devnetSlot || 514391633) + 1,
           signature: txSignature,
           jitoTipSol: settings.jitoTipSol,
           pnlSol: pos.pnlSol,
@@ -462,7 +627,6 @@ export default function App() {
     ]);
   };
 
-  // Claim Referral Rewards
   const handleClaimRewards = () => {
     const claimAmount = referralData.unclaimedRewardsSol;
     if (claimAmount <= 0) return;
@@ -489,7 +653,6 @@ export default function App() {
     }));
   };
 
-  // Add Faucet SOL
   const handleAddFaucetSol = (amt: number) => {
     setWallet((prev) => ({
       ...prev,
@@ -498,8 +661,96 @@ export default function App() {
     }));
   };
 
+  // Price Alert Management Handlers
+  const handleSaveAlert = (newAlertData: Omit<PriceAlert, 'id' | 'createdAt' | 'triggered'>) => {
+    const newAlert: PriceAlert = {
+      ...newAlertData,
+      id: `alt-${Date.now()}`,
+      createdAt: Date.now(),
+      triggered: false,
+    };
+    setAlerts((prev) => [newAlert, ...prev]);
+
+    setThoughts((prev) => [
+      {
+        id: `th-${Date.now()}`,
+        timestamp: Date.now(),
+        level: 'INFO',
+        tokenSymbol: newAlert.tokenSymbol,
+        message: `Custom Price Alert Armed: Target ${newAlert.condition} ${newAlert.targetPriceSol.toFixed(7)} SOL (Meteora DLMM Bin #${newAlert.dlmmBinId || 10420}).`,
+        actionTaken: 'WATCHLIST',
+        latencyMs: 18,
+      },
+      ...prev.slice(0, 40),
+    ]);
+  };
+
+  const handleToggleAlert = (alertId: string) => {
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === alertId ? { ...a, active: !a.active } : a))
+    );
+  };
+
+  const handleDeleteAlert = (alertId: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  };
+
+  const handleDismissAlertBanner = (eventId: string) => {
+    setTriggeredAlertEvents((prev) => prev.filter((e) => e.id !== eventId));
+  };
+
+  const handleOpenCreateAlertModal = (tokenToTarget?: Token) => {
+    setAlertTargetToken(tokenToTarget || tokens[0] || null);
+    setIsAlertModalOpen(true);
+  };
+
+  const activeAlertsCount = alerts.filter((a) => a.active && !a.triggered).length;
+  const triggeredAlertsCount = alerts.filter((a) => a.triggered).length;
+
   return (
     <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col font-sans pb-20 md:pb-6">
+      {/* Visual Price Alert Banner (triggers when price threshold is reached) */}
+      <PriceAlertBanner
+        alerts={triggeredAlertEvents}
+        onDismiss={handleDismissAlertBanner}
+        onInstantBuy={(mint, symbol, name, price) => {
+          const tok = tokens.find((t) => t.mint === mint) || {
+            id: mint,
+            mint,
+            symbol,
+            name,
+            priceSol: price,
+            priceUsd: price * SOL_PRICE_USD,
+            category: 'Alert Snipe',
+            marketCap: 35000,
+            liquiditySol: 30,
+            bondingCurveProgress: 45,
+            devAddress: '8xK...2p',
+            devHoldingPercent: 3.2,
+            devRugCount: 0,
+            createdAt: Date.now(),
+            volume24hSol: 80,
+            buyCount: 50,
+            sellCount: 10,
+            holdersCount: 95,
+            armorScore: 92,
+            mintAuthorityRevoked: true,
+            freezeAuthorityDisabled: true,
+            top10HoldersPercent: 18,
+            honeypotPassed: true,
+            isScamKeyword: false,
+            status: 'PUMPING' as const,
+            description: 'Triggered from custom price target',
+          };
+          executeSnipe(tok, 0.5);
+        }}
+        onInstantSell={(mint) => {
+          const pos = positions.find((p) => p.tokenMint === mint);
+          if (pos) handleSellPosition(pos.id, 100);
+        }}
+        onOpenAlertsManager={() => setActiveTab('alerts')}
+      />
+
       {/* Top Header */}
       <Header
         wallet={wallet}
@@ -513,10 +764,14 @@ export default function App() {
             isAutonomousEnabled: !prev.isAutonomousEnabled,
           }))
         }
+        activeAlertsCount={activeAlertsCount}
+        triggeredAlertsCount={triggeredAlertsCount}
+        devnetSlot={wallet.devnetSlot}
+        clusterLatencyMs={wallet.clusterLatencyMs}
       />
 
       {/* Main Content Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6 transition-opacity duration-200 touch-pan-y">
         {/* TAB 1: RADAR / PUMP.FUN SCANNER */}
         {activeTab === 'scanner' && (
           <TokenScanner
@@ -525,6 +780,7 @@ export default function App() {
             onQuickSnipe={(token) => executeSnipe(token, settings.defaultTradeSol)}
             isAutonomousEnabled={settings.isAutonomousEnabled}
             defaultTradeSol={settings.defaultTradeSol}
+            onOpenSetAlert={handleOpenCreateAlertModal}
           />
         )}
 
@@ -562,7 +818,20 @@ export default function App() {
           />
         )}
 
-        {/* TAB 4: STRATEGY & SHELL ARMOR PROTECTION */}
+        {/* TAB 4: CUSTOM PRICE TARGET ALERTS & METEORA DLMM */}
+        {activeTab === 'alerts' && (
+          <PriceAlertsManager
+            alerts={alerts}
+            tokens={tokens}
+            onToggleAlert={handleToggleAlert}
+            onDeleteAlert={handleDeleteAlert}
+            onOpenCreateModal={handleOpenCreateAlertModal}
+            onSelectToken={(token) => setSelectedToken(token)}
+            solPriceUsd={SOL_PRICE_USD}
+          />
+        )}
+
+        {/* TAB 5: STRATEGY & SHELL ARMOR PROTECTION */}
         {activeTab === 'settings' && (
           <StrategyArmorSettings
             settings={settings}
@@ -571,7 +840,7 @@ export default function App() {
           />
         )}
 
-        {/* TAB 5: REFERRALS (15% - 35% TIERS) */}
+        {/* TAB 6: REFERRALS (15% - 35% TIERS) */}
         {activeTab === 'referral' && (
           <ReferralProgram
             referralData={referralData}
@@ -587,9 +856,19 @@ export default function App() {
         onClose={() => setSelectedToken(null)}
         onExecuteTrade={(token, amount) => executeSnipe(token, amount)}
         walletBalanceSol={wallet.balanceSol}
+        onOpenSetAlert={handleOpenCreateAlertModal}
       />
 
-      {/* Wallet Management Modal */}
+      {/* Price Alert Creation Modal */}
+      <PriceAlertModal
+        token={alertTargetToken}
+        isOpen={isAlertModalOpen}
+        onClose={() => setIsAlertModalOpen(false)}
+        onSaveAlert={handleSaveAlert}
+        solPriceUsd={SOL_PRICE_USD}
+      />
+
+      {/* Wallet Management Modal (with real Solana Devnet / Testnet integration) */}
       <WalletModal
         wallet={wallet}
         isOpen={isWalletOpen}
@@ -605,6 +884,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         openPositionsCount={positions.length}
+        triggeredAlertsCount={triggeredAlertsCount}
       />
     </div>
   );

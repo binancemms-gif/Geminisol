@@ -11,6 +11,7 @@ import {
   Lock,
   Unlock,
   TrendingUp,
+  Bell,
 } from 'lucide-react';
 import { Token } from '../types/sniper';
 import { playClickSound, playSnipeChime } from '../utils/audio';
@@ -20,6 +21,7 @@ interface TokenModalProps {
   onClose: () => void;
   onExecuteTrade: (token: Token, amountSol: number) => void;
   walletBalanceSol: number;
+  onOpenSetAlert?: (token: Token) => void;
 }
 
 interface AiAnalysisResult {
@@ -38,6 +40,7 @@ export const TokenModal: React.FC<TokenModalProps> = ({
   onClose,
   onExecuteTrade,
   walletBalanceSol,
+  onOpenSetAlert,
 }) => {
   const [tradeAmount, setTradeAmount] = useState<number>(0.5);
   const [copied, setCopied] = useState(false);
@@ -191,7 +194,21 @@ export const TokenModal: React.FC<TokenModalProps> = ({
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                 Bonding Curve Trajectory
               </span>
-              <span className="text-emerald-400 font-mono text-[11px] font-semibold">+38.8% since launch</span>
+              <div className="flex items-center gap-2">
+                {onOpenSetAlert && (
+                  <button
+                    onClick={() => {
+                      playClickSound();
+                      onOpenSetAlert(token);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-mono text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <Bell className="w-3 h-3 text-amber-400" />
+                    <span>Set Price Alert</span>
+                  </button>
+                )}
+                <span className="text-emerald-400 font-mono text-[11px] font-semibold">+38.8% since launch</span>
+              </div>
             </div>
             <div className="w-full h-[70px] overflow-hidden flex items-end">
               <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full overflow-visible">

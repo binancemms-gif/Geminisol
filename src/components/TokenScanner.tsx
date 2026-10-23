@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ShieldCheck, Zap, Copy, Check, Eye } from 'lucide-react';
+import { Search, ShieldCheck, Zap, Copy, Check, Eye, Bell } from 'lucide-react';
 import { Token } from '../types/sniper';
 import { playClickSound, playSnipeChime } from '../utils/audio';
 
@@ -9,6 +9,7 @@ interface TokenScannerProps {
   onQuickSnipe: (token: Token) => void;
   isAutonomousEnabled: boolean;
   defaultTradeSol: number;
+  onOpenSetAlert?: (token: Token) => void;
 }
 
 export const TokenScanner: React.FC<TokenScannerProps> = ({
@@ -17,6 +18,7 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
   onQuickSnipe,
   isAutonomousEnabled,
   defaultTradeSol,
+  onOpenSetAlert,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'safe' | 'pumping' | 'lowdev'>('all');
@@ -294,19 +296,37 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                 </div>
 
                 {/* Actions: View Details vs Quick Snipe Button */}
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      playClickSound();
-                      onSelectToken(token);
-                    }}
-                    className="min-h-[44px] px-3 text-xs font-medium text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Deep Audit</span>
-                  </button>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playClickSound();
+                        onSelectToken(token);
+                      }}
+                      className="min-h-[44px] px-2.5 text-xs font-medium text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Audit</span>
+                    </button>
+
+                    {onOpenSetAlert && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playClickSound();
+                          onOpenSetAlert(token);
+                        }}
+                        className="min-h-[44px] px-2.5 text-xs font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                        title="Set Custom Price Alert"
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                        <span>Alert</span>
+                      </button>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -315,7 +335,7 @@ export const TokenScanner: React.FC<TokenScannerProps> = ({
                       playSnipeChime();
                       onQuickSnipe(token);
                     }}
-                    className="min-h-[44px] px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 active:scale-95"
+                    className="min-h-[44px] px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 active:scale-95"
                   >
                     <Zap className="w-3.5 h-3.5 fill-black" />
                     <span>Snipe {defaultTradeSol} SOL</span>

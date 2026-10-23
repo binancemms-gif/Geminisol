@@ -120,11 +120,52 @@ export interface ReferralData {
   }[];
 }
 
+export interface PriceAlert {
+  id: string;
+  tokenMint: string;
+  tokenSymbol: string;
+  tokenName: string;
+  targetPriceSol: number;
+  targetPriceUsd: number;
+  condition: 'ABOVE' | 'BELOW';
+  currentPriceSol: number;
+  currentPriceUsd: number;
+  initialPriceSol: number;
+  createdAt: number;
+  triggered: boolean;
+  triggeredAt?: number;
+  active: boolean;
+  note?: string;
+  dlmmBinId?: number; // Meteora DLMM active price bin
+}
+
+export interface TriggeredAlertEvent {
+  id: string;
+  alert: PriceAlert;
+  triggeredPriceSol: number;
+  triggeredPriceUsd: number;
+  timestamp: number;
+  dismissed: boolean;
+}
+
+export interface MeteoraBin {
+  binId: number;
+  priceSol: number;
+  priceUsd: number;
+  liquiditySol: number;
+  isActive: boolean;
+  isTargetBin?: boolean;
+}
+
 export interface WalletState {
   address: string;
   connected: boolean;
   balanceSol: number;
   balanceUsd: number;
   solPriceUsd: number;
-  walletProvider: 'Phantom' | 'Solflare' | 'Backpack' | 'Internal Paper Wallet';
+  walletProvider: 'Phantom' | 'Solflare' | 'Backpack' | 'Solana Devnet Testnet Wallet';
+  isDevnetActive: boolean;
+  devnetSlot?: number;
+  clusterLatencyMs?: number;
 }
+

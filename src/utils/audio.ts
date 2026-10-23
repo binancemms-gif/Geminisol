@@ -59,6 +59,41 @@ export function playSnipeChime() {
   osc2.stop(now + 0.3);
 }
 
+export function playPriceAlertChime() {
+  if (isAudioMuted) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc1.type = 'sine';
+  osc2.type = 'triangle';
+
+  // Urgent dual-tone notification chime (880Hz -> 1320Hz -> 1760Hz)
+  osc1.frequency.setValueAtTime(880, now);
+  osc1.frequency.setValueAtTime(1320, now + 0.1);
+  osc1.frequency.setValueAtTime(1760, now + 0.2);
+
+  osc2.frequency.setValueAtTime(440, now);
+  osc2.frequency.setValueAtTime(660, now + 0.1);
+  osc2.frequency.setValueAtTime(880, now + 0.2);
+
+  gain.gain.setValueAtTime(0.18, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc1.start(now);
+  osc2.start(now);
+  osc1.stop(now + 0.52);
+  osc2.stop(now + 0.52);
+}
+
 export function playProfitChime() {
   if (isAudioMuted) return;
   const ctx = getAudioContext();

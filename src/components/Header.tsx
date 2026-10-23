@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Shield, Wallet, Zap } from 'lucide-react';
+import { Volume2, VolumeX, Shield, Wallet, Zap, Bell, Radio } from 'lucide-react';
 import { WalletState } from '../types/sniper';
 import { setAudioMuted, getAudioMuted, playClickSound } from '../utils/audio';
 
@@ -10,6 +10,10 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
   isAutonomousEnabled: boolean;
   onToggleAutonomous: () => void;
+  activeAlertsCount: number;
+  triggeredAlertsCount: number;
+  devnetSlot?: number;
+  clusterLatencyMs?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +23,10 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   isAutonomousEnabled,
   onToggleAutonomous,
+  activeAlertsCount,
+  triggeredAlertsCount,
+  devnetSlot,
+  clusterLatencyMs,
 }) => {
   const [muted, setMutedState] = React.useState(getAudioMuted());
 
@@ -98,6 +106,22 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => {
               playClickSound();
+              setActiveTab('alerts');
+            }}
+            className={`whitespace-nowrap shrink-0 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'alerts' ? 'text-amber-400 font-semibold' : 'hover:text-slate-200'
+            }`}
+          >
+            <span>Price Alerts</span>
+            {activeAlertsCount > 0 && (
+              <span className="font-mono text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/40">
+                {activeAlertsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              playClickSound();
               setActiveTab('referral');
             }}
             className={`whitespace-nowrap shrink-0 transition-colors ${
@@ -110,6 +134,37 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Primary Action & Live Telemetry Controls */}
         <div className="flex items-center gap-2 lg:gap-3 shrink-0">
+          {/* Real Solana Devnet Cluster Pill */}
+          <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-400">
+            <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+            <span>Devnet:</span>
+            <span className="text-white tabular-nums">#{devnetSlot || 514391633}</span>
+            {clusterLatencyMs && (
+              <span className="text-emerald-400 tabular-nums">({clusterLatencyMs}ms)</span>
+            )}
+          </div>
+
+          {/* Price Alerts Notification Bell */}
+          <button
+            onClick={() => {
+              playClickSound();
+              setActiveTab('alerts');
+            }}
+            aria-label="Price target alerts"
+            className="w-10 h-10 rounded-lg bg-slate-900 border border-slate-800 relative flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+          >
+            <Bell className={`w-4 h-4 ${activeAlertsCount > 0 ? 'text-amber-400' : ''}`} />
+            {triggeredAlertsCount > 0 ? (
+              <span className="absolute -top-1 -right-1 bg-amber-500 text-black font-mono font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce">
+                {triggeredAlertsCount}
+              </span>
+            ) : activeAlertsCount > 0 ? (
+              <span className="absolute -top-1 -right-1 bg-slate-800 text-amber-300 font-mono text-[9px] w-3.5 h-3.5 rounded-full border border-amber-500/50 flex items-center justify-center">
+                {activeAlertsCount}
+              </span>
+            ) : null}
+          </button>
+
           {/* Quick Sound Toggle */}
           <button
             onClick={handleToggleMute}
